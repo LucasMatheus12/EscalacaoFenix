@@ -11,7 +11,7 @@ interface RatingStarsProps {
 export function RatingStars({
   value,
   onChange,
-  size = 20,
+  size = 28,
   readonly = false,
 }: RatingStarsProps) {
   const [hoverValue, setHoverValue] = useState<number | null>(null);
