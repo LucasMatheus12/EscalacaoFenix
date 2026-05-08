@@ -1,6 +1,5 @@
 import { Trophy } from "lucide-react";
 import type { Team } from "../types/team";
-import { RatingStars } from "./RatingStars";
 
 interface TeamCardProps {
   team: Team;
@@ -23,7 +22,6 @@ export function TeamCard({ team, highlight }: TeamCardProps) {
               {player.name}
               {player.position ? <small className="player-position"> ({player.position})</small> : null}
             </span>
-            <RatingStars value={player.rating} readonly size={14} />
           </li>
         ))}
       </ul>

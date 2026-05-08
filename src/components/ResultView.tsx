@@ -4,7 +4,6 @@ import { toBlob } from "html-to-image";
 import type { Player } from "../types/player";
 import type { DrawResult } from "../types/team";
 import { TeamCard } from "./TeamCard";
-import { RatingStars } from "./RatingStars";
 
 interface ResultViewProps {
   result: DrawResult;
@@ -120,7 +119,6 @@ export function ResultView({
                   {player.name}
                   {player.position ? <small className="player-position"> ({player.position})</small> : null}
                 </span>
-                <RatingStars value={player.rating} readonly size={14} />
               </li>
             ))}
           </ul>
