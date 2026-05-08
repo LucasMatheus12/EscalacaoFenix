@@ -114,6 +114,11 @@ body::after {
   gap: 1rem;
 }
 
+.team-share-item {
+  display: grid;
+  gap: 0.55rem;
+}
+
 h2,
 h3,
 p {
