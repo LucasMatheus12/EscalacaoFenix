@@ -109,6 +109,11 @@ body::after {
   gap: 1rem;
 }
 
+.share-capture {
+  display: grid;
+  gap: 1rem;
+}
+
 h2,
 h3,
 p {
@@ -421,6 +426,10 @@ input:focus {
 .actions-grid {
   display: grid;
   gap: 0.6rem;
+}
+
+.share-feedback {
+  margin-top: -0.2rem;
 }
 
 .big-action {
