@@ -25,6 +25,7 @@ export function PlayerForm({
     "Lateral",
     "Volante",
     "Meia",
+    "Ponta",
     "Atacante",
   ];
 
