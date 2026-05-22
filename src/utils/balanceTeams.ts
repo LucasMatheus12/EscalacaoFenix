@@ -1,5 +1,6 @@
 import type { Player } from "../types/player";
 import type { DrawResult, Team } from "../types/team";
+import { recalculateTeam, sortPlayersByName } from "./drawUtils";
 
 const randomItem = <T,>(items: T[]): T => {
   return items[Math.floor(Math.random() * items.length)];
@@ -32,12 +33,15 @@ export const balanceTeams = (
     const chosen = randomItem(byPlayers);
 
     chosen.players.push(player);
-    chosen.totalStars += player.rating;
-    chosen.averageStars = Number((chosen.totalStars / chosen.players.length).toFixed(2));
   });
 
-  const totals = teams.map((team) => team.totalStars);
+  const balancedTeams = teams.map((team) => ({
+    ...recalculateTeam(team),
+    players: sortPlayersByName(team.players),
+  }));
+
+  const totals = balancedTeams.map((team) => team.totalStars);
   const balanceSpread = Math.max(...totals) - Math.min(...totals);
 
-  return { teams, reserves, balanceSpread };
+  return { teams: balancedTeams, reserves: sortPlayersByName(reserves), balanceSpread };
 };

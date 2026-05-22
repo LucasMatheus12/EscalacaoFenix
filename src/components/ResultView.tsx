@@ -3,19 +3,34 @@ import { useRef, useState } from "react";
 import { toBlob } from "html-to-image";
 import type { Player } from "../types/player";
 import type { DrawResult } from "../types/team";
+import type { PlayerSlot } from "../utils/drawUtils";
 import { TeamCard } from "./TeamCard";
 
 interface ResultViewProps {
   result: DrawResult;
   onRedraw: () => void;
+  onSwapPlayers: (slotA: PlayerSlot, slotB: PlayerSlot) => void;
   onEditPlayers: () => void;
   onEditConfig: () => void;
   onClearAll: () => void;
 }
 
+const isSameSlot = (a: PlayerSlot, b: PlayerSlot) => {
+  if (a.playerId !== b.playerId) {
+    return false;
+  }
+
+  if (a.kind === "reserve" && b.kind === "reserve") {
+    return true;
+  }
+
+  return a.kind === "team" && b.kind === "team" && a.teamId === b.teamId;
+};
+
 export function ResultView({
   result,
   onRedraw,
+  onSwapPlayers,
   onEditPlayers,
   onEditConfig,
   onClearAll,
@@ -23,11 +38,27 @@ export function ResultView({
   const teamRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [sharingTeamId, setSharingTeamId] = useState<number | null>(null);
   const [shareMessage, setShareMessage] = useState("");
+  const [selectedSlot, setSelectedSlot] = useState<PlayerSlot | null>(null);
   const { teams, reserves, balanceSpread } = result;
   const best = Math.min(...teams.map((team) => team.totalStars));
   const worst = Math.max(...teams.map((team) => team.totalStars));
 
   const isHighlight = (teamTotal: number) => teamTotal === best || teamTotal === worst;
+
+  const handlePlayerClick = (slot: PlayerSlot) => {
+    if (!selectedSlot) {
+      setSelectedSlot(slot);
+      return;
+    }
+
+    if (isSameSlot(selectedSlot, slot)) {
+      setSelectedSlot(null);
+      return;
+    }
+
+    onSwapPlayers(selectedSlot, slot);
+    setSelectedSlot(null);
+  };
 
   const handleShareWhatsapp = async (teamId: number, teamName: string) => {
     const targetNode = teamRefs.current[teamId];
@@ -88,13 +119,22 @@ export function ResultView({
         <p>
           Diferenca de equilibrio: <strong>{balanceSpread} estrela(s)</strong>
         </p>
+        <p className="muted swap-hint">
+          Toque em dois jogadores para trocar entre times{reserves.length ? " ou reservas" : ""}.
+        </p>
       </div>
 
       <div className="team-grid">
         {teams.map((team) => (
           <div key={team.id} className="team-share-item">
             <div ref={(element) => (teamRefs.current[team.id] = element)} className="share-capture">
-              <TeamCard key={team.id} team={team} highlight={isHighlight(team.totalStars)} />
+              <TeamCard
+                key={team.id}
+                team={team}
+                highlight={isHighlight(team.totalStars)}
+                selectedSlot={selectedSlot}
+                onPlayerClick={handlePlayerClick}
+              />
             </div>
             <button
               type="button"
@@ -115,10 +155,20 @@ export function ResultView({
           <ul className="reserves-list">
             {reserves.map((player: Player) => (
               <li key={player.id}>
-                <span>
-                  {player.name}
-                  {player.position ? <small className="player-position"> ({player.position})</small> : null}
-                </span>
+                <button
+                  type="button"
+                  className={`player-swap-btn ${
+                    selectedSlot?.kind === "reserve" && selectedSlot.playerId === player.id
+                      ? "selected"
+                      : ""
+                  }`}
+                  onClick={() => handlePlayerClick({ kind: "reserve", playerId: player.id })}
+                >
+                  <span>
+                    {player.name}
+                    {player.position ? <small className="player-position"> ({player.position})</small> : null}
+                  </span>
+                </button>
               </li>
             ))}
           </ul>

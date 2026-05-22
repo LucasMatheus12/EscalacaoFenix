@@ -3,6 +3,7 @@ import { ResultView } from "./components/ResultView";
 import type { Player } from "./types/player";
 import type { DrawConfig, DrawResult } from "./types/team";
 import { balanceTeams } from "./utils/balanceTeams";
+import { sortPlayersByName, swapPlayersInDraw, type PlayerSlot } from "./utils/drawUtils";
 import { clearStoredData, loadConfig, loadPlayers, saveConfig, savePlayers } from "./utils/storage";
 import { validateDrawConfig } from "./utils/validations";
 import { HomeView } from "./views/HomeView";
@@ -40,9 +41,11 @@ function App() {
       return;
     }
 
-    const nextPlayers = id
-      ? players.map((player) => (player.id === id ? { ...player, name, position, rating } : player))
-      : [...players, { id: crypto.randomUUID(), name, position, rating }];
+    const nextPlayers = sortPlayersByName(
+      id
+        ? players.map((player) => (player.id === id ? { ...player, name, position, rating } : player))
+        : [...players, { id: crypto.randomUUID(), name, position, rating }],
+    );
 
     setPlayers(nextPlayers);
     savePlayers(nextPlayers);
@@ -70,6 +73,10 @@ function App() {
     const drawResult = balanceTeams(players, config.teamCount, config.playersPerTeam);
     setResult(drawResult);
     setScreen("results");
+  };
+
+  const handleSwapPlayers = (slotA: PlayerSlot, slotB: PlayerSlot) => {
+    setResult((current) => (current ? swapPlayersInDraw(current, slotA, slotB) : current));
   };
 
   const clearAll = () => {
@@ -105,6 +112,7 @@ function App() {
         <ResultView
           result={result}
           onRedraw={handleDraw}
+          onSwapPlayers={handleSwapPlayers}
           onEditPlayers={() => setScreen("setup")}
           onEditConfig={() => setScreen("setup")}
           onClearAll={clearAll}

@@ -1,5 +1,6 @@
 import type { Player } from "../types/player";
 import type { DrawConfig } from "../types/team";
+import { sortPlayersByName } from "./drawUtils";
 
 const PLAYERS_KEY = "fenix:players";
 const CONFIG_KEY = "fenix:config";
@@ -21,17 +22,19 @@ export const loadPlayers = (): Player[] => {
       return [];
     }
 
-    return parsed.map((player) => ({
-      ...player,
-      position: player.position?.trim() || "",
-    }));
+    return sortPlayersByName(
+      parsed.map((player) => ({
+        ...player,
+        position: player.position?.trim() || "",
+      })),
+    );
   } catch {
     return [];
   }
 };
 
 export const savePlayers = (players: Player[]): void => {
-  localStorage.setItem(PLAYERS_KEY, JSON.stringify(players));
+  localStorage.setItem(PLAYERS_KEY, JSON.stringify(sortPlayersByName(players)));
 };
 
 export const loadConfig = (): DrawConfig => {
