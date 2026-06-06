@@ -1,5 +1,7 @@
 import type { Player } from "./player";
 
+export type GameType = "quadra" | "campo";
+
 export interface Team {
   id: number;
   name: string;

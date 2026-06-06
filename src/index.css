@@ -299,6 +299,23 @@ input:focus {
   color: #fff1e3;
 }
 
+.game-type-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 7.5rem;
+}
+
+.game-type-hint {
+  font-size: 0.72rem;
+  color: #d5b39a;
+}
+
+.position-chip.active .game-type-hint {
+  color: #ffe6cc;
+}
+
 .section-title {
   display: flex;
   justify-content: space-between;

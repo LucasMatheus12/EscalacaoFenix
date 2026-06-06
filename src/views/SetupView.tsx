@@ -1,11 +1,14 @@
 import { Shuffle } from "lucide-react";
 import type { Player } from "../types/player";
-import type { DrawConfig } from "../types/team";
+import type { DrawConfig, GameType } from "../types/team";
 import { DrawConfig as DrawConfigForm } from "../components/DrawConfig";
+import { GameTypeSelector } from "../components/GameTypeSelector";
 import { PlayerForm } from "../components/PlayerForm";
 import { PlayerList } from "../components/PlayerList";
 
 interface SetupViewProps {
+  gameType: GameType;
+  onGameTypeChange: (gameType: GameType) => void;
   players: Player[];
   config: DrawConfig;
   warningMessage: string | null;
@@ -22,6 +25,8 @@ interface SetupViewProps {
 }
 
 export function SetupView({
+  gameType,
+  onGameTypeChange,
   players,
   config,
   warningMessage,
@@ -38,6 +43,7 @@ export function SetupView({
 }: SetupViewProps) {
   return (
     <section className="setup-view">
+      <GameTypeSelector value={gameType} onChange={onGameTypeChange} />
       <PlayerForm
         onSubmit={onPlayerSubmit}
         editingPlayer={editingPlayer}

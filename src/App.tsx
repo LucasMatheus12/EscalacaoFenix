@@ -1,10 +1,16 @@
 import { useMemo, useState } from "react";
 import { ResultView } from "./components/ResultView";
 import type { Player } from "./types/player";
-import type { DrawConfig, DrawResult } from "./types/team";
+import type { DrawConfig, DrawResult, GameType } from "./types/team";
 import { balanceTeams } from "./utils/balanceTeams";
 import { sortPlayersByName, swapPlayersInDraw, type PlayerSlot } from "./utils/drawUtils";
-import { clearStoredData, loadConfig, loadPlayers, saveConfig, savePlayers } from "./utils/storage";
+import {
+  clearStoredData,
+  loadGameType,
+  loadSession,
+  saveGameType,
+  saveSession,
+} from "./utils/storage";
 import { validateDrawConfig } from "./utils/validations";
 import { HomeView } from "./views/HomeView";
 import { SetupView } from "./views/SetupView";
@@ -13,8 +19,10 @@ type Screen = "home" | "setup" | "results";
 
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
-  const [players, setPlayers] = useState<Player[]>(() => loadPlayers());
-  const [config, setConfig] = useState<DrawConfig>(() => loadConfig());
+  const [gameType, setGameType] = useState<GameType>(() => loadGameType());
+  const initialSession = loadSession(loadGameType());
+  const [players, setPlayers] = useState<Player[]>(() => initialSession.players);
+  const [config, setConfig] = useState<DrawConfig>(() => initialSession.config);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [result, setResult] = useState<DrawResult | null>(null);
 
@@ -25,6 +33,10 @@ function App() {
   const requiredPlayers = config.teamCount * config.playersPerTeam;
   const addLocked = players.length >= requiredPlayers;
   const addLockMessage = `Limite atingido para esta configuracao (${requiredPlayers} jogadores). Ajuste a configuracao para cadastrar mais.`;
+
+  const persistSession = (nextPlayers: Player[], nextConfig: DrawConfig) => {
+    saveSession(gameType, { players: nextPlayers, config: nextConfig });
+  };
 
   const addOrUpdatePlayer = ({
     name,
@@ -48,14 +60,14 @@ function App() {
     );
 
     setPlayers(nextPlayers);
-    savePlayers(nextPlayers);
+    persistSession(nextPlayers, config);
     setEditingPlayer(null);
   };
 
   const removePlayer = (playerId: string) => {
     const nextPlayers = players.filter((player) => player.id !== playerId);
     setPlayers(nextPlayers);
-    savePlayers(nextPlayers);
+    persistSession(nextPlayers, config);
     if (editingPlayer?.id === playerId) {
       setEditingPlayer(null);
     }
@@ -63,7 +75,23 @@ function App() {
 
   const updateConfig = (nextConfig: DrawConfig) => {
     setConfig(nextConfig);
-    saveConfig(nextConfig);
+    persistSession(players, nextConfig);
+  };
+
+  const switchGameType = (nextGameType: GameType) => {
+    if (nextGameType === gameType) {
+      return;
+    }
+
+    persistSession(players, config);
+
+    const nextSession = loadSession(nextGameType);
+    setGameType(nextGameType);
+    saveGameType(nextGameType);
+    setPlayers(nextSession.players);
+    setConfig(nextSession.config);
+    setEditingPlayer(null);
+    setResult(null);
   };
 
   const handleDraw = () => {
@@ -80,11 +108,12 @@ function App() {
   };
 
   const clearAll = () => {
+    clearStoredData(gameType);
+    const resetSession = loadSession(gameType);
     setPlayers([]);
+    setConfig(resetSession.config);
     setResult(null);
     setEditingPlayer(null);
-    setConfig({ teamCount: 2, playersPerTeam: 5 });
-    clearStoredData();
     setScreen("setup");
   };
 
@@ -93,6 +122,8 @@ function App() {
       {screen === "home" ? <HomeView onStart={() => setScreen("setup")} /> : null}
       {screen === "setup" ? (
         <SetupView
+          gameType={gameType}
+          onGameTypeChange={switchGameType}
           players={players}
           config={config}
           warningMessage={warningMessage}
