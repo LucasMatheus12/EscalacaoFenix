@@ -1,41 +1,162 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AppHeader } from "./components/AppHeader";
+import { BottomNav } from "./components/BottomNav";
 import { ResultView } from "./components/ResultView";
+import { usePwaInstall } from "./hooks/usePwaInstall";
+import { SCREEN_PATHS, SCREEN_TITLES, screenFromPath, type Screen } from "./navigation";
 import type { Player } from "./types/player";
 import type { DrawConfig, DrawResult, GameType } from "./types/team";
+import { getSupabase, isSupabaseConfigured } from "./lib/supabase";
 import { balanceTeams } from "./utils/balanceTeams";
 import { sortPlayersByName, swapPlayersInDraw, type PlayerSlot } from "./utils/drawUtils";
 import {
   clearStoredData,
+  hydrateSession,
   loadGameType,
   loadSession,
+  pushRemoteSession,
   saveGameType,
   saveSession,
+  type SyncStatus,
 } from "./utils/storage";
 import { validateDrawConfig } from "./utils/validations";
 import { HomeView } from "./views/HomeView";
 import { SetupView } from "./views/SetupView";
 
-type Screen = "home" | "setup" | "results";
-
 function App() {
-  const [screen, setScreen] = useState<Screen>("home");
+  const [screen, setScreen] = useState<Screen>(() => screenFromPath(window.location.pathname));
   const [gameType, setGameType] = useState<GameType>(() => loadGameType());
   const initialSession = loadSession(loadGameType());
   const [players, setPlayers] = useState<Player[]>(() => initialSession.players);
   const [config, setConfig] = useState<DrawConfig>(() => initialSession.config);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [result, setResult] = useState<DrawResult | null>(null);
-
-  const warningMessage = useMemo(
-    () => validateDrawConfig(config, players.length),
-    [config, players.length],
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() =>
+    isSupabaseConfigured() ? "syncing" : "offline",
   );
-  const requiredPlayers = config.teamCount * config.playersPerTeam;
-  const addLocked = players.length >= requiredPlayers;
-  const addLockMessage = `Limite atingido para esta configuracao (${requiredPlayers} jogadores). Ajuste a configuracao para cadastrar mais.`;
+  const resultRef = useRef<DrawResult | null>(null);
+  const { canInstall, iosHint, install } = usePwaInstall();
 
-  const persistSession = (nextPlayers: Player[], nextConfig: DrawConfig) => {
-    saveSession(gameType, { players: nextPlayers, config: nextConfig });
+  resultRef.current = result;
+
+  useEffect(() => {
+    const standalone = window.matchMedia("(display-mode: standalone)").matches;
+    document.body.classList.toggle("is-standalone", standalone);
+  }, []);
+
+  const warningMessage = useMemo(() => validateDrawConfig(config, players), [config, players]);
+
+  const goTo = (next: Screen) => {
+    if (next === "results" && !resultRef.current) {
+      return;
+    }
+
+    const path = SCREEN_PATHS[next];
+    if (window.location.pathname !== path) {
+      window.history.pushState({ screen: next }, "", path);
+    }
+    setScreen(next);
+    window.scrollTo({ top: 0, behavior: "auto" });
+  };
+
+  useEffect(() => {
+    if (screen === "results" && !result) {
+      window.history.replaceState({ screen: "setup" }, "", SCREEN_PATHS.setup);
+      setScreen("setup");
+    }
+  }, [screen, result]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const next = screenFromPath(window.location.pathname);
+      if (next === "results" && !resultRef.current) {
+        window.history.replaceState({ screen: "setup" }, "", SCREEN_PATHS.setup);
+        setScreen("setup");
+        return;
+      }
+      setScreen(next);
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrate = async () => {
+      if (!isSupabaseConfigured()) {
+        setSyncStatus("offline");
+        return;
+      }
+
+      setSyncStatus("syncing");
+      try {
+        const session = await hydrateSession(gameType);
+        if (cancelled) {
+          return;
+        }
+        setPlayers(session.players);
+        setConfig(session.config);
+        setSyncStatus("cloud");
+      } catch {
+        if (!cancelled) {
+          setSyncStatus("error");
+        }
+      }
+    };
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [gameType]);
+
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`game_sessions:${gameType}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_sessions",
+          filter: `game_type=eq.${gameType}`,
+        },
+        (payload) => {
+          const row = payload.new as { players?: Player[]; config?: DrawConfig } | undefined;
+          if (!row?.players || !row.config) {
+            return;
+          }
+
+          const nextPlayers = sortPlayersByName(row.players);
+          setPlayers(nextPlayers);
+          setConfig(row.config);
+          saveSession(gameType, { players: nextPlayers, config: row.config });
+          setSyncStatus("cloud");
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [gameType]);
+
+  const saveCurrentSession = (nextPlayers: Player[], nextConfig: DrawConfig) => {
+    const session = { players: nextPlayers, config: nextConfig };
+    saveSession(gameType, session);
+    if (!isSupabaseConfigured()) {
+      return;
+    }
+    void pushRemoteSession(gameType, session).then((ok) => {
+      setSyncStatus(ok ? "cloud" : "error");
+    });
   };
 
   const addOrUpdatePlayer = ({
@@ -49,10 +170,6 @@ function App() {
     rating: number;
     id?: string;
   }) => {
-    if (!id && addLocked) {
-      return;
-    }
-
     const nextPlayers = sortPlayersByName(
       id
         ? players.map((player) => (player.id === id ? { ...player, name, position, rating } : player))
@@ -60,14 +177,71 @@ function App() {
     );
 
     setPlayers(nextPlayers);
-    persistSession(nextPlayers, config);
+    saveCurrentSession(nextPlayers, config);
     setEditingPlayer(null);
+  };
+
+  const addManyPlayers = (entries: { name: string; position: string }[]) => {
+    const byName = new Map(
+      players.map((player) => [player.name.toLocaleLowerCase("pt-BR"), player] as const),
+    );
+    const nextPlayers = [...players];
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    entries.forEach((entry) => {
+      const key = entry.name.toLocaleLowerCase("pt-BR");
+      const current = byName.get(key);
+
+      if (!current) {
+        const created: Player = {
+          id: crypto.randomUUID(),
+          name: entry.name,
+          position: entry.position,
+          rating: 0,
+        };
+        nextPlayers.push(created);
+        byName.set(key, created);
+        added += 1;
+        return;
+      }
+
+      if (entry.position && current.position !== entry.position) {
+        const patched = { ...current, position: entry.position };
+        const index = nextPlayers.findIndex((player) => player.id === current.id);
+        if (index >= 0) {
+          nextPlayers[index] = patched;
+        }
+        byName.set(key, patched);
+        updated += 1;
+        return;
+      }
+
+      skipped += 1;
+    });
+
+    if (added || updated) {
+      const sorted = sortPlayersByName(nextPlayers);
+      setPlayers(sorted);
+      saveCurrentSession(sorted, config);
+    }
+
+    return { added, skipped, updated };
+  };
+
+  const updatePlayerRating = (playerId: string, rating: number) => {
+    const nextPlayers = players.map((player) =>
+      player.id === playerId ? { ...player, rating } : player,
+    );
+    setPlayers(nextPlayers);
+    saveCurrentSession(nextPlayers, config);
   };
 
   const removePlayer = (playerId: string) => {
     const nextPlayers = players.filter((player) => player.id !== playerId);
     setPlayers(nextPlayers);
-    persistSession(nextPlayers, config);
+    saveCurrentSession(nextPlayers, config);
     if (editingPlayer?.id === playerId) {
       setEditingPlayer(null);
     }
@@ -75,7 +249,7 @@ function App() {
 
   const updateConfig = (nextConfig: DrawConfig) => {
     setConfig(nextConfig);
-    persistSession(players, nextConfig);
+    saveCurrentSession(players, nextConfig);
   };
 
   const switchGameType = (nextGameType: GameType) => {
@@ -83,7 +257,7 @@ function App() {
       return;
     }
 
-    persistSession(players, config);
+    saveCurrentSession(players, config);
 
     const nextSession = loadSession(nextGameType);
     setGameType(nextGameType);
@@ -100,43 +274,72 @@ function App() {
     }
     const drawResult = balanceTeams(players, config.teamCount, config.playersPerTeam);
     setResult(drawResult);
+    window.history.pushState({ screen: "results" }, "", SCREEN_PATHS.results);
     setScreen("results");
+    window.scrollTo({ top: 0, behavior: "auto" });
   };
 
   const handleSwapPlayers = (slotA: PlayerSlot, slotB: PlayerSlot) => {
     setResult((current) => (current ? swapPlayersInDraw(current, slotA, slotB) : current));
   };
 
-  const clearAll = () => {
-    clearStoredData(gameType);
+  const clearAll = async () => {
+    await clearStoredData(gameType);
     const resetSession = loadSession(gameType);
     setPlayers([]);
     setConfig(resetSession.config);
     setResult(null);
     setEditingPlayer(null);
-    setScreen("setup");
+    goTo("setup");
+  };
+
+  const goBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    goTo(screen === "results" ? "setup" : "home");
   };
 
   return (
     <main className="app-shell">
-      {screen === "home" ? <HomeView onStart={() => setScreen("setup")} /> : null}
+      <AppHeader
+        title={SCREEN_TITLES[screen]}
+        showBack={screen !== "home"}
+        canInstall={canInstall}
+        onBack={goBack}
+        onInstall={() => {
+          void install();
+        }}
+      />
+      {screen === "home" ? (
+        <HomeView
+          onStart={() => goTo("setup")}
+          canInstall={canInstall}
+          iosHint={iosHint}
+          onInstall={() => {
+            void install();
+          }}
+        />
+      ) : null}
       {screen === "setup" ? (
         <SetupView
           gameType={gameType}
           onGameTypeChange={switchGameType}
+          syncStatus={syncStatus}
           players={players}
           config={config}
           warningMessage={warningMessage}
           editingPlayer={editingPlayer}
           onPlayerSubmit={addOrUpdatePlayer}
+          onBulkAdd={addManyPlayers}
           onEditPlayer={setEditingPlayer}
+          onRatePlayer={updatePlayerRating}
           onDeletePlayer={removePlayer}
           onCancelEdit={() => setEditingPlayer(null)}
           onConfigChange={updateConfig}
           onDraw={handleDraw}
           drawDisabled={Boolean(warningMessage)}
-          addLocked={addLocked}
-          addLockMessage={addLockMessage}
         />
       ) : null}
       {screen === "results" && result ? (
@@ -144,11 +347,14 @@ function App() {
           result={result}
           onRedraw={handleDraw}
           onSwapPlayers={handleSwapPlayers}
-          onEditPlayers={() => setScreen("setup")}
-          onEditConfig={() => setScreen("setup")}
-          onClearAll={clearAll}
+          onEditPlayers={() => goTo("setup")}
+          onEditConfig={() => goTo("setup")}
+          onClearAll={() => {
+            void clearAll();
+          }}
         />
       ) : null}
+      <BottomNav screen={screen} hasResult={Boolean(result)} onNavigate={goTo} />
     </main>
   );
 }

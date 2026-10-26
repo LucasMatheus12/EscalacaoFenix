@@ -1,4 +1,6 @@
+import type { Player } from "../types/player";
 import type { DrawConfig } from "../types/team";
+import { fieldPlayersOf } from "./drawUtils";
 
 export const validatePlayerName = (name: string): string | null => {
   if (!name.trim()) {
@@ -22,10 +24,7 @@ export const validatePlayerRating = (rating: number): string | null => {
   return null;
 };
 
-export const validateDrawConfig = (
-  config: DrawConfig,
-  totalPlayers: number,
-): string | null => {
+export const validateDrawConfig = (config: DrawConfig, players: Player[]): string | null => {
   if (config.teamCount < 2) {
     return "A quantidade de times deve ser de pelo menos 2.";
   }
@@ -35,9 +34,15 @@ export const validateDrawConfig = (
   }
 
   const requiredPlayers = config.teamCount * config.playersPerTeam;
+  const fieldPlayers = fieldPlayersOf(players);
 
-  if (totalPlayers < requiredPlayers) {
-    return `Faltam ${requiredPlayers - totalPlayers} jogador(es) para esse formato.`;
+  if (fieldPlayers.length < requiredPlayers) {
+    return `Faltam ${requiredPlayers - fieldPlayers.length} jogador(es) de linha. Goleiros e reservas da lista ficam fora do sorteio.`;
+  }
+
+  const unrated = fieldPlayers.filter((player) => !player.rating).length;
+  if (unrated) {
+    return `Defina as estrelas de ${unrated} jogador(es) de linha antes de sortear.`;
   }
 
   return null;

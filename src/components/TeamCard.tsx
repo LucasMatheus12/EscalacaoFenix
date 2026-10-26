@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Trophy } from "lucide-react";
+import { ArrowLeftRight } from "lucide-react";
 import type { Team } from "../types/team";
 import type { PlayerSlot } from "../utils/drawUtils";
 
@@ -18,10 +18,11 @@ export function TeamCard({ team, highlight, selectedSlot, onPlayerClick }: TeamC
   return (
     <article className={`team-card ${highlight ? "highlight" : ""}`}>
       <header>
-        <h3>
-          <Trophy size={16} /> {team.name}
-        </h3>
-        <span className="team-total">{team.totalStars} estrelas</span>
+        <div className="team-heading">
+          <span className="team-index">{team.id}</span>
+          <h3>{team.name}</h3>
+        </div>
+        <span className="team-total">{team.totalStars.toFixed(1)} ★</span>
       </header>
       <ul>
         {team.players.map((player) => (
@@ -33,15 +34,19 @@ export function TeamCard({ team, highlight, selectedSlot, onPlayerClick }: TeamC
             >
               <span>
                 {player.name}
-                {player.position ? <small className="player-position"> ({player.position})</small> : null}
+                {player.position ? <small className="player-position"> {player.position}</small> : null}
               </span>
-              <ArrowLeftRight size={14} aria-hidden />
+              <span className="swap-meta">
+                <em>{player.rating}</em>
+                <ArrowLeftRight size={14} aria-hidden />
+              </span>
             </button>
           </li>
         ))}
       </ul>
       <footer>
-        <span>Media: {team.averageStars.toFixed(2)}</span>
+        <span>Média {team.averageStars.toFixed(2)}</span>
+        <span>{team.players.length} jogador(es)</span>
       </footer>
     </article>
   );

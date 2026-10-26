@@ -6,6 +6,7 @@ interface RatingStarsProps {
   onChange?: (value: number) => void;
   size?: number;
   readonly?: boolean;
+  showTip?: boolean;
 }
 
 export function RatingStars({
@@ -13,6 +14,7 @@ export function RatingStars({
   onChange,
   size = 28,
   readonly = false,
+  showTip = true,
 }: RatingStarsProps) {
   const [hoverValue, setHoverValue] = useState<number | null>(null);
   const normalized = Math.max(0, Math.min(5, value));
@@ -72,7 +74,7 @@ export function RatingStars({
       }}
     >
       {renderStars(!readonly)}
-      {!readonly ? <small className="stars-tip">Toque na metade esquerda/direita da estrela.</small> : null}
+      {!readonly && showTip ? <small className="stars-tip">Meia estrela na esquerda.</small> : null}
     </div>
   );
 }

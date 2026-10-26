@@ -1,11 +1,14 @@
 import type { Player } from "../types/player";
 import type { DrawConfig, GameType } from "../types/team";
+import { getSupabase, isSupabaseConfigured } from "../lib/supabase";
 import { sortPlayersByName } from "./drawUtils";
 
 const SESSIONS_KEY = "fenix:sessions";
 const GAME_TYPE_KEY = "fenix:gameType";
 const LEGACY_PLAYERS_KEY = "fenix:players";
 const LEGACY_CONFIG_KEY = "fenix:config";
+
+export type SyncStatus = "offline" | "syncing" | "cloud" | "error";
 
 export interface GameSession {
   players: Player[];
@@ -14,9 +17,15 @@ export interface GameSession {
 
 type StoredSessions = Partial<Record<GameType, GameSession>>;
 
+interface RemoteSessionRow {
+  game_type: GameType;
+  players: Player[];
+  config: DrawConfig;
+}
+
 const defaultConfigByType: Record<GameType, DrawConfig> = {
-  quadra: { teamCount: 2, playersPerTeam: 5 },
-  campo: { teamCount: 2, playersPerTeam: 7 },
+  quadra: { teamCount: 3, playersPerTeam: 6 },
+  campo: { teamCount: 3, playersPerTeam: 6 },
 };
 
 const emptySession = (gameType: GameType): GameSession => ({
@@ -61,6 +70,16 @@ const parseConfig = (raw: string | null, gameType: GameType): DrawConfig => {
     return defaultConfigByType[gameType];
   }
 };
+
+const normalizeSession = (session: GameSession, gameType: GameType): GameSession => ({
+  players: sortPlayersByName(
+    (session.players ?? []).map((player) => ({
+      ...player,
+      position: player.position?.trim() || "",
+    })),
+  ),
+  config: parseConfig(JSON.stringify(session.config ?? null), gameType),
+});
 
 const migrateLegacyStorage = (): StoredSessions => {
   const legacyPlayers = localStorage.getItem(LEGACY_PLAYERS_KEY);
@@ -122,23 +141,12 @@ export const loadSession = (gameType: GameType): GameSession => {
     return emptySession(gameType);
   }
 
-  return {
-    players: parsePlayers(JSON.stringify(session.players)),
-    config: parseConfig(JSON.stringify(session.config), gameType),
-  };
+  return normalizeSession(session, gameType);
 };
 
 export const saveSession = (gameType: GameType, session: GameSession): void => {
   const sessions = loadSessions();
-  sessions[gameType] = {
-    players: sortPlayersByName(
-      session.players.map((player) => ({
-        ...player,
-        position: player.position?.trim() || "",
-      })),
-    ),
-    config: session.config,
-  };
+  sessions[gameType] = normalizeSession(session, gameType);
   saveSessions(sessions);
 };
 
@@ -148,6 +156,61 @@ export const clearSession = (gameType: GameType): void => {
   saveSessions(sessions);
 };
 
-export const clearStoredData = (gameType: GameType): void => {
-  clearSession(gameType);
+export const pullRemoteSession = async (gameType: GameType): Promise<GameSession | null> => {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("game_sessions")
+    .select("game_type, players, config")
+    .eq("game_type", gameType)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  const row = data as RemoteSessionRow;
+  return normalizeSession({ players: row.players ?? [], config: row.config }, gameType);
+};
+
+export const pushRemoteSession = async (gameType: GameType, session: GameSession): Promise<boolean> => {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return false;
+  }
+
+  const nextSession = normalizeSession(session, gameType);
+  const { error } = await supabase.from("game_sessions").upsert({
+    game_type: gameType,
+    players: nextSession.players,
+    config: nextSession.config,
+    updated_at: new Date().toISOString(),
+  });
+
+  return !error;
+};
+
+export const hydrateSession = async (gameType: GameType): Promise<GameSession> => {
+  const local = loadSession(gameType);
+  if (!isSupabaseConfigured()) {
+    return local;
+  }
+
+  const remote = await pullRemoteSession(gameType);
+  if (remote) {
+    saveSession(gameType, remote);
+    return remote;
+  }
+
+  await pushRemoteSession(gameType, local);
+  return local;
+};
+
+export const clearStoredData = async (gameType: GameType): Promise<void> => {
+  const reset = emptySession(gameType);
+  saveSession(gameType, reset);
+  await pushRemoteSession(gameType, reset);
 };

@@ -24,6 +24,10 @@ const isSameSlot = (a: PlayerSlot, b: PlayerSlot) => {
     return true;
   }
 
+  if (a.kind === "goalkeeper" && b.kind === "goalkeeper") {
+    return true;
+  }
+
   return a.kind === "team" && b.kind === "team" && a.teamId === b.teamId;
 };
 
@@ -39,11 +43,14 @@ export function ResultView({
   const [sharingTeamId, setSharingTeamId] = useState<number | null>(null);
   const [shareMessage, setShareMessage] = useState("");
   const [selectedSlot, setSelectedSlot] = useState<PlayerSlot | null>(null);
-  const { teams, reserves, balanceSpread } = result;
-  const best = Math.min(...teams.map((team) => team.totalStars));
-  const worst = Math.max(...teams.map((team) => team.totalStars));
+  const { teams, reserves, goalkeepers = [], balanceSpread } = result;
+  const averages = teams.map((team) => team.averageStars);
+  const lowestAverage = Math.min(...averages);
+  const highestAverage = Math.max(...averages);
+  const isLevel = balanceSpread === 0;
 
-  const isHighlight = (teamTotal: number) => teamTotal === best || teamTotal === worst;
+  const isHighlight = (average: number) =>
+    !isLevel && (average === lowestAverage || average === highestAverage);
 
   const handlePlayerClick = (slot: PlayerSlot) => {
     if (!selectedSlot) {
@@ -115,12 +122,37 @@ export function ResultView({
   return (
     <section className="result-view">
       <div className="result-header card">
-        <h2>Resultado da Escalacao</h2>
-        <p>
-          Diferenca de equilibrio: <strong>{balanceSpread} estrela(s)</strong>
+        <p className="hero-kicker">Sorteio pronto</p>
+        <h2>Times equilibrados</h2>
+        <div className="stat-row">
+          <div className={`stat-chip ${isLevel ? "success" : ""}`}>
+            <strong>{balanceSpread.toFixed(2)}</strong>
+            <span>diferença de média</span>
+          </div>
+          <div className="stat-chip">
+            <strong>{teams.length}</strong>
+            <span>times</span>
+          </div>
+          {reserves.length ? (
+            <div className="stat-chip">
+              <strong>{reserves.length}</strong>
+              <span>reservas</span>
+            </div>
+          ) : null}
+          {goalkeepers.length ? (
+            <div className="stat-chip">
+              <strong>{goalkeepers.length}</strong>
+              <span>goleiro(s)</span>
+            </div>
+          ) : null}
+        </div>
+        <p className="muted average-line">
+          Médias: {teams.map((team) => team.averageStars.toFixed(2)).join(" · ")}
         </p>
         <p className="muted swap-hint">
-          Toque em dois jogadores para trocar entre times{reserves.length ? " ou reservas" : ""}.
+          Toque em dois jogadores para trocar entre times
+          {reserves.length ? ", reservas" : ""}
+          {goalkeepers.length ? " ou goleiros" : ""}.
         </p>
       </div>
 
@@ -131,7 +163,7 @@ export function ResultView({
               <TeamCard
                 key={team.id}
                 team={team}
-                highlight={isHighlight(team.totalStars)}
+                highlight={isHighlight(team.averageStars)}
                 selectedSlot={selectedSlot}
                 onPlayerClick={handlePlayerClick}
               />
@@ -149,9 +181,37 @@ export function ResultView({
         ))}
       </div>
 
+      {goalkeepers.length ? (
+        <section className="card">
+          <h3>Goleiros</h3>
+          <p className="muted">Fora do sorteio. Toque para encaixar em um time se quiser.</p>
+          <ul className="reserves-list">
+            {goalkeepers.map((player: Player) => (
+              <li key={player.id}>
+                <button
+                  type="button"
+                  className={`player-swap-btn ${
+                    selectedSlot?.kind === "goalkeeper" && selectedSlot.playerId === player.id
+                      ? "selected"
+                      : ""
+                  }`}
+                  onClick={() => handlePlayerClick({ kind: "goalkeeper", playerId: player.id })}
+                >
+                  <span>
+                    {player.name}
+                    {player.position ? <small className="player-position"> ({player.position})</small> : null}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {reserves.length ? (
         <section className="card">
           <h3>Reservas</h3>
+          <p className="muted">Quem veio na lista como reserva fica fora do sorteio.</p>
           <ul className="reserves-list">
             {reserves.map((player: Player) => (
               <li key={player.id}>
@@ -183,7 +243,7 @@ export function ResultView({
           <UserRoundCog size={16} /> Editar jogadores
         </button>
         <button type="button" className="btn secondary" onClick={onEditConfig}>
-          <Settings2 size={16} /> Alterar configuracoes
+          <Settings2 size={16} /> Alterar configurações
         </button>
         <button type="button" className="btn ghost danger-text" onClick={onClearAll}>
           <Trash2 size={16} /> Limpar tudo

@@ -18,5 +18,6 @@ export interface DrawConfig {
 export interface DrawResult {
   teams: Team[];
   reserves: Player[];
+  goalkeepers: Player[];
   balanceSpread: number;
 }
