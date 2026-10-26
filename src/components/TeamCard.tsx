@@ -32,7 +32,7 @@ export function TeamCard({ team, highlight, selectedSlot, onPlayerClick }: TeamC
               className={`player-swap-btn ${isSelected(player.id) ? "selected" : ""}`}
               onClick={() => onPlayerClick({ kind: "team", teamId: team.id, playerId: player.id })}
             >
-              <span>
+              <span className="player-swap-name">
                 {player.name}
                 {player.position ? <small className="player-position"> {player.position}</small> : null}
               </span>

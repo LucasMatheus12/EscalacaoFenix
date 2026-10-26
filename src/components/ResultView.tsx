@@ -5,6 +5,7 @@ import type { Player } from "../types/player";
 import type { DrawResult } from "../types/team";
 import type { PlayerSlot } from "../utils/drawUtils";
 import { TeamCard } from "./TeamCard";
+import { TeamShareCard } from "./TeamShareCard";
 
 interface ResultViewProps {
   result: DrawResult;
@@ -77,10 +78,19 @@ export function ResultView({
     setShareMessage("");
 
     try {
+      await document.fonts.ready;
       const blob = await toBlob(targetNode, {
         cacheBust: true,
         pixelRatio: 2,
-        backgroundColor: "#120b10",
+        backgroundColor: "#1a0e12",
+        width: 640,
+        style: {
+          opacity: "1",
+          transform: "none",
+          position: "static",
+          left: "0",
+          top: "0",
+        },
       });
 
       if (!blob) {
@@ -159,14 +169,18 @@ export function ResultView({
       <div className="team-grid">
         {teams.map((team) => (
           <div key={team.id} className="team-share-item">
-            <div ref={(element) => (teamRefs.current[team.id] = element)} className="share-capture">
-              <TeamCard
-                key={team.id}
-                team={team}
-                highlight={isHighlight(team.averageStars)}
-                selectedSlot={selectedSlot}
-                onPlayerClick={handlePlayerClick}
-              />
+            <TeamCard
+              team={team}
+              highlight={isHighlight(team.averageStars)}
+              selectedSlot={selectedSlot}
+              onPlayerClick={handlePlayerClick}
+            />
+            <div
+              ref={(element) => (teamRefs.current[team.id] = element)}
+              className="share-capture"
+              aria-hidden
+            >
+              <TeamShareCard team={team} />
             </div>
             <button
               type="button"

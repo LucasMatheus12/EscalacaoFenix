@@ -274,8 +274,13 @@ body::after {
 }
 
 .share-capture {
-  display: grid;
-  gap: 1rem;
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 640px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .team-share-item {
@@ -824,6 +829,7 @@ input:focus {
 .team-card header,
 .team-card footer {
   display: flex;
+  flex-wrap: nowrap;
   justify-content: space-between;
   align-items: center;
   gap: 0.6rem;
@@ -832,6 +838,7 @@ input:focus {
 .team-card h3 {
   margin: 0;
   font-size: 1.02rem;
+  white-space: nowrap;
 }
 
 .team-card ul {
@@ -850,6 +857,7 @@ input:focus {
 .team-card footer {
   color: var(--muted);
   font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .player-swap-btn {
@@ -861,11 +869,20 @@ input:focus {
   font: inherit;
   padding: 0.52rem 0.6rem;
   display: flex;
+  flex-wrap: nowrap;
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
   text-align: left;
+}
+
+.player-swap-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .player-swap-btn:hover {
@@ -879,9 +896,11 @@ input:focus {
 
 .swap-meta {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 0.4rem;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .swap-meta em {
@@ -896,8 +915,121 @@ input:focus {
 }
 
 .team-total {
+  flex-shrink: 0;
   font-weight: 800;
   color: var(--gold);
+  white-space: nowrap;
+}
+
+.share-card {
+  width: 640px;
+  box-sizing: border-box;
+  padding: 28px 26px 24px;
+  background: #1a0e12;
+  color: #fff4e8;
+  font-family: Outfit, Inter, sans-serif;
+  border: 1px solid rgba(255, 163, 99, 0.28);
+  border-radius: 28px;
+}
+
+.share-card-kicker {
+  margin: 0 0 14px;
+  color: #ffc45a;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.share-card-header,
+.share-card-row,
+.share-card-footer {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.share-card-header {
+  margin-bottom: 18px;
+}
+
+.share-card-badge-cell,
+.share-card-title,
+.share-card-total,
+.share-card-name,
+.share-card-rating,
+.share-card-footer span {
+  display: table-cell;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.share-card-badge-cell {
+  width: 50px;
+}
+
+.share-card-badge {
+  display: inline-block;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #ff9a3c;
+  color: #2a1204;
+  font-weight: 800;
+  font-size: 18px;
+  text-align: center;
+  line-height: 42px;
+}
+
+.share-card-title {
+  padding: 0 14px;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.share-card-total {
+  width: 110px;
+  text-align: right;
+  color: #ffc45a;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.share-card-list {
+  display: block;
+}
+
+.share-card-row {
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+}
+
+.share-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.share-card-rating {
+  width: 64px;
+  text-align: right;
+  color: #ffc45a;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.share-card-footer {
+  margin-top: 10px;
+  color: #d7b49c;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.share-card-footer span:last-child {
+  text-align: right;
 }
 
 .actions-grid {
