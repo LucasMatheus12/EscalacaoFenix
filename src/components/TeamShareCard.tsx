@@ -13,7 +13,7 @@ export function TeamShareCard({ team }: TeamShareCardProps) {
           <span className="share-card-badge">{team.id}</span>
         </span>
         <strong className="share-card-title">{team.name}</strong>
-        <span className="share-card-total">{team.totalStars.toFixed(1)} ★</span>
+        <span className="share-card-total">Média {team.averageStars.toFixed(2)}</span>
       </div>
       <div className="share-card-list">
         {team.players.map((player) => (
@@ -22,12 +22,10 @@ export function TeamShareCard({ team }: TeamShareCardProps) {
               {player.name}
               {player.position ? ` · ${player.position}` : ""}
             </span>
-            <span className="share-card-rating">{player.rating}</span>
           </div>
         ))}
       </div>
       <div className="share-card-footer">
-        <span>Média {team.averageStars.toFixed(2)}</span>
         <span>{team.players.length} jogadores</span>
       </div>
     </article>
