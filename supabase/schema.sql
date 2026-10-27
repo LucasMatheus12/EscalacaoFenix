@@ -1,15 +1,11 @@
 create table if not exists public.game_sessions (
-  game_type text primary key check (game_type in ('quadra', 'campo')),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  game_type text not null check (game_type in ('quadra', 'campo')),
   players jsonb not null default '[]'::jsonb,
   config jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  primary key (user_id, game_type)
 );
-
-insert into public.game_sessions (game_type, players, config)
-values
-  ('quadra', '[]'::jsonb, '{"teamCount": 3, "playersPerTeam": 6}'::jsonb),
-  ('campo', '[]'::jsonb, '{"teamCount": 3, "playersPerTeam": 6}'::jsonb)
-on conflict (game_type) do nothing;
 
 alter table public.game_sessions enable row level security;
 
@@ -17,23 +13,31 @@ drop policy if exists "Anyone can read sessions" on public.game_sessions;
 drop policy if exists "Anyone can insert sessions" on public.game_sessions;
 drop policy if exists "Anyone can update sessions" on public.game_sessions;
 drop policy if exists "Anyone can delete sessions" on public.game_sessions;
+drop policy if exists "Users read own sessions" on public.game_sessions;
+drop policy if exists "Users insert own sessions" on public.game_sessions;
+drop policy if exists "Users update own sessions" on public.game_sessions;
+drop policy if exists "Users delete own sessions" on public.game_sessions;
 
-create policy "Anyone can read sessions"
+create policy "Users read own sessions"
   on public.game_sessions for select
-  using (true);
+  to authenticated
+  using (auth.uid() = user_id);
 
-create policy "Anyone can insert sessions"
+create policy "Users insert own sessions"
   on public.game_sessions for insert
-  with check (true);
+  to authenticated
+  with check (auth.uid() = user_id);
 
-create policy "Anyone can update sessions"
+create policy "Users update own sessions"
   on public.game_sessions for update
-  using (true)
-  with check (true);
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
-create policy "Anyone can delete sessions"
+create policy "Users delete own sessions"
   on public.game_sessions for delete
-  using (true);
+  to authenticated
+  using (auth.uid() = user_id);
 
 do $$
 begin

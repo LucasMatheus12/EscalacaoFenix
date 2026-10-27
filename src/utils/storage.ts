@@ -7,6 +7,10 @@ const SESSIONS_KEY = "fenix:sessions";
 const GAME_TYPE_KEY = "fenix:gameType";
 const LEGACY_PLAYERS_KEY = "fenix:players";
 const LEGACY_CONFIG_KEY = "fenix:config";
+const LEGACY_SEEDED_KEY = "fenix:legacySeeded";
+
+const sessionsKeyFor = (userId?: string): string =>
+  userId ? `fenix:sessions:${userId}` : SESSIONS_KEY;
 
 export type SyncStatus = "offline" | "syncing" | "cloud" | "error";
 
@@ -18,6 +22,7 @@ export interface GameSession {
 type StoredSessions = Partial<Record<GameType, GameSession>>;
 
 interface RemoteSessionRow {
+  user_id?: string;
   game_type: GameType;
   players: Player[];
   config: DrawConfig;
@@ -103,10 +108,10 @@ const migrateLegacyStorage = (): StoredSessions => {
   return migrated;
 };
 
-const loadSessions = (): StoredSessions => {
-  const raw = localStorage.getItem(SESSIONS_KEY);
+const loadSessions = (userId?: string): StoredSessions => {
+  const raw = localStorage.getItem(sessionsKeyFor(userId));
   if (!raw) {
-    return migrateLegacyStorage();
+    return userId ? {} : migrateLegacyStorage();
   }
 
   try {
@@ -120,8 +125,8 @@ const loadSessions = (): StoredSessions => {
   }
 };
 
-const saveSessions = (sessions: StoredSessions): void => {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+const saveSessions = (sessions: StoredSessions, userId?: string): void => {
+  localStorage.setItem(sessionsKeyFor(userId), JSON.stringify(sessions));
 };
 
 export const loadGameType = (): GameType => {
@@ -133,8 +138,8 @@ export const saveGameType = (gameType: GameType): void => {
   localStorage.setItem(GAME_TYPE_KEY, gameType);
 };
 
-export const loadSession = (gameType: GameType): GameSession => {
-  const sessions = loadSessions();
+export const loadSession = (gameType: GameType, userId?: string): GameSession => {
+  const sessions = loadSessions(userId);
   const session = sessions[gameType];
 
   if (!session) {
@@ -144,19 +149,38 @@ export const loadSession = (gameType: GameType): GameSession => {
   return normalizeSession(session, gameType);
 };
 
-export const saveSession = (gameType: GameType, session: GameSession): void => {
-  const sessions = loadSessions();
+export const saveSession = (gameType: GameType, session: GameSession, userId?: string): void => {
+  const sessions = loadSessions(userId);
   sessions[gameType] = normalizeSession(session, gameType);
-  saveSessions(sessions);
+  saveSessions(sessions, userId);
 };
 
-export const clearSession = (gameType: GameType): void => {
-  const sessions = loadSessions();
+export const clearSession = (gameType: GameType, userId?: string): void => {
+  const sessions = loadSessions(userId);
   delete sessions[gameType];
-  saveSessions(sessions);
+  saveSessions(sessions, userId);
 };
 
-export const pullRemoteSession = async (gameType: GameType): Promise<GameSession | null> => {
+const seedFromLegacyIfNeeded = (userId: string, gameType: GameType): GameSession => {
+  const owned = loadSession(gameType, userId);
+  if (owned.players.length || localStorage.getItem(LEGACY_SEEDED_KEY)) {
+    return owned;
+  }
+
+  const legacy = loadSession(gameType);
+  if (!legacy.players.length) {
+    return owned;
+  }
+
+  saveSession(gameType, legacy, userId);
+  localStorage.setItem(LEGACY_SEEDED_KEY, userId);
+  return legacy;
+};
+
+export const pullRemoteSession = async (
+  gameType: GameType,
+  userId: string,
+): Promise<GameSession | null> => {
   const supabase = getSupabase();
   if (!supabase) {
     return null;
@@ -165,6 +189,7 @@ export const pullRemoteSession = async (gameType: GameType): Promise<GameSession
   const { data, error } = await supabase
     .from("game_sessions")
     .select("game_type, players, config")
+    .eq("user_id", userId)
     .eq("game_type", gameType)
     .maybeSingle();
 
@@ -176,14 +201,19 @@ export const pullRemoteSession = async (gameType: GameType): Promise<GameSession
   return normalizeSession({ players: row.players ?? [], config: row.config }, gameType);
 };
 
-export const pushRemoteSession = async (gameType: GameType, session: GameSession): Promise<boolean> => {
+export const pushRemoteSession = async (
+  gameType: GameType,
+  session: GameSession,
+  userId?: string,
+): Promise<boolean> => {
   const supabase = getSupabase();
-  if (!supabase) {
+  if (!supabase || !userId) {
     return false;
   }
 
   const nextSession = normalizeSession(session, gameType);
   const { error } = await supabase.from("game_sessions").upsert({
+    user_id: userId,
     game_type: gameType,
     players: nextSession.players,
     config: nextSession.config,
@@ -193,24 +223,24 @@ export const pushRemoteSession = async (gameType: GameType, session: GameSession
   return !error;
 };
 
-export const hydrateSession = async (gameType: GameType): Promise<GameSession> => {
-  const local = loadSession(gameType);
+export const hydrateSession = async (gameType: GameType, userId: string): Promise<GameSession> => {
+  const local = seedFromLegacyIfNeeded(userId, gameType);
   if (!isSupabaseConfigured()) {
     return local;
   }
 
-  const remote = await pullRemoteSession(gameType);
+  const remote = await pullRemoteSession(gameType, userId);
   if (remote) {
-    saveSession(gameType, remote);
+    saveSession(gameType, remote, userId);
     return remote;
   }
 
-  await pushRemoteSession(gameType, local);
+  await pushRemoteSession(gameType, local, userId);
   return local;
 };
 
-export const clearStoredData = async (gameType: GameType): Promise<void> => {
+export const clearStoredData = async (gameType: GameType, userId?: string): Promise<void> => {
   const reset = emptySession(gameType);
-  saveSession(gameType, reset);
-  await pushRemoteSession(gameType, reset);
+  saveSession(gameType, reset, userId);
+  await pushRemoteSession(gameType, reset, userId);
 };

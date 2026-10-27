@@ -127,6 +127,24 @@ body::after {
   font-size: 0.82rem;
 }
 
+.header-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 2.4rem;
+}
+
+.login-view {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.login-view h1 {
+  margin: 0.2rem 0 0;
+  font-size: 1.55rem;
+}
+
 .bottom-nav {
   position: fixed;
   left: 0;

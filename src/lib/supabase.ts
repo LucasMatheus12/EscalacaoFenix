@@ -15,7 +15,11 @@ export const getSupabase = (): SupabaseClient | null => {
 
   if (!client) {
     client = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
     });
   }
 

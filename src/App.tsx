@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "./components/AppHeader";
 import { BottomNav } from "./components/BottomNav";
 import { ResultView } from "./components/ResultView";
+import { useAuth } from "./hooks/useAuth";
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { SCREEN_PATHS, SCREEN_TITLES, screenFromPath, type Screen } from "./navigation";
 import type { Player } from "./types/player";
@@ -21,14 +22,16 @@ import {
 } from "./utils/storage";
 import { validateDrawConfig } from "./utils/validations";
 import { HomeView } from "./views/HomeView";
+import { LoginView } from "./views/LoginView";
 import { SetupView } from "./views/SetupView";
 
 function App() {
+  const { user, loading: authLoading, signIn, signUp, signOut } = useAuth();
+  const userId = user?.id;
   const [screen, setScreen] = useState<Screen>(() => screenFromPath(window.location.pathname));
   const [gameType, setGameType] = useState<GameType>(() => loadGameType());
-  const initialSession = loadSession(loadGameType());
-  const [players, setPlayers] = useState<Player[]>(() => initialSession.players);
-  const [config, setConfig] = useState<DrawConfig>(() => initialSession.config);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [config, setConfig] = useState<DrawConfig>({ teamCount: 3, playersPerTeam: 6 });
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [result, setResult] = useState<DrawResult | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() =>
@@ -86,13 +89,26 @@ function App() {
 
     const hydrate = async () => {
       if (!isSupabaseConfigured()) {
-        setSyncStatus("offline");
+        const session = loadSession(gameType);
+        if (!cancelled) {
+          setPlayers(session.players);
+          setConfig(session.config);
+          setSyncStatus("offline");
+        }
+        return;
+      }
+
+      if (!userId) {
+        setPlayers([]);
+        setResult(null);
+        setEditingPlayer(null);
+        setSyncStatus(isSupabaseConfigured() ? "syncing" : "offline");
         return;
       }
 
       setSyncStatus("syncing");
       try {
-        const session = await hydrateSession(gameType);
+        const session = await hydrateSession(gameType, userId);
         if (cancelled) {
           return;
         }
@@ -110,34 +126,38 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [gameType]);
+  }, [gameType, userId]);
 
   useEffect(() => {
     const supabase = getSupabase();
-    if (!supabase) {
+    if (!supabase || !userId) {
       return;
     }
 
     const channel = supabase
-      .channel(`game_sessions:${gameType}`)
+      .channel(`game_sessions:${userId}:${gameType}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "game_sessions",
-          filter: `game_type=eq.${gameType}`,
+          filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          const row = payload.new as { players?: Player[]; config?: DrawConfig } | undefined;
-          if (!row?.players || !row.config) {
+          const row = payload.new as {
+            game_type?: GameType;
+            players?: Player[];
+            config?: DrawConfig;
+          } | undefined;
+          if (!row?.players || !row.config || row.game_type !== gameType) {
             return;
           }
 
           const nextPlayers = sortPlayersByName(row.players);
           setPlayers(nextPlayers);
           setConfig(row.config);
-          saveSession(gameType, { players: nextPlayers, config: row.config });
+          saveSession(gameType, { players: nextPlayers, config: row.config }, userId);
           setSyncStatus("cloud");
         },
       )
@@ -146,15 +166,15 @@ function App() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [gameType]);
+  }, [gameType, userId]);
 
   const saveCurrentSession = (nextPlayers: Player[], nextConfig: DrawConfig) => {
     const session = { players: nextPlayers, config: nextConfig };
-    saveSession(gameType, session);
-    if (!isSupabaseConfigured()) {
+    saveSession(gameType, session, userId);
+    if (!isSupabaseConfigured() || !userId) {
       return;
     }
-    void pushRemoteSession(gameType, session).then((ok) => {
+    void pushRemoteSession(gameType, session, userId).then((ok) => {
       setSyncStatus(ok ? "cloud" : "error");
     });
   };
@@ -259,7 +279,7 @@ function App() {
 
     saveCurrentSession(players, config);
 
-    const nextSession = loadSession(nextGameType);
+    const nextSession = loadSession(nextGameType, userId);
     setGameType(nextGameType);
     saveGameType(nextGameType);
     setPlayers(nextSession.players);
@@ -284,8 +304,8 @@ function App() {
   };
 
   const clearAll = async () => {
-    await clearStoredData(gameType);
-    const resetSession = loadSession(gameType);
+    await clearStoredData(gameType, userId);
+    const resetSession = loadSession(gameType, userId);
     setPlayers([]);
     setConfig(resetSession.config);
     setResult(null);
@@ -301,6 +321,22 @@ function App() {
     goTo(screen === "results" ? "setup" : "home");
   };
 
+  if (authLoading) {
+    return (
+      <main className="app-shell">
+        <p className="muted">Carregando...</p>
+      </main>
+    );
+  }
+
+  if (isSupabaseConfigured() && !user) {
+    return (
+      <main className="app-shell">
+        <LoginView onSignIn={signIn} onSignUp={signUp} />
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <AppHeader
@@ -311,6 +347,13 @@ function App() {
         onInstall={() => {
           void install();
         }}
+        onSignOut={
+          isSupabaseConfigured()
+            ? () => {
+                void signOut();
+              }
+            : undefined
+        }
       />
       {screen === "home" ? (
         <HomeView
