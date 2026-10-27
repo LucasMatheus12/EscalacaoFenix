@@ -74,8 +74,13 @@ export function useAuth() {
     if (error) {
       return authErrorMessage(error.message);
     }
-    if (data.user && !data.session) {
-      return "Conta criada. Confirme o e-mail para entrar.";
+    if (data.session) {
+      return null;
+    }
+
+    const login = await supabase.auth.signInWithPassword({ email, password });
+    if (login.error) {
+      return authErrorMessage(login.error.message);
     }
     return null;
   };

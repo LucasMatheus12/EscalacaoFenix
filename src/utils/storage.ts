@@ -223,6 +223,27 @@ export const pushRemoteSession = async (
   return !error;
 };
 
+const seedRemoteFromLegacy = async (gameType: GameType, userId: string): Promise<GameSession | null> => {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc("seed_own_game_session", { p_game_type: gameType });
+  if (error || !data) {
+    return null;
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as RemoteSessionRow | undefined;
+  if (!row) {
+    return null;
+  }
+
+  const session = normalizeSession({ players: row.players ?? [], config: row.config }, gameType);
+  saveSession(gameType, session, userId);
+  return session;
+};
+
 export const hydrateSession = async (gameType: GameType, userId: string): Promise<GameSession> => {
   const local = seedFromLegacyIfNeeded(userId, gameType);
   if (!isSupabaseConfigured()) {
@@ -230,6 +251,16 @@ export const hydrateSession = async (gameType: GameType, userId: string): Promis
   }
 
   const remote = await pullRemoteSession(gameType, userId);
+  if (remote?.players.length) {
+    saveSession(gameType, remote, userId);
+    return remote;
+  }
+
+  const seeded = await seedRemoteFromLegacy(gameType, userId);
+  if (seeded?.players.length) {
+    return seeded;
+  }
+
   if (remote) {
     saveSession(gameType, remote, userId);
     return remote;
