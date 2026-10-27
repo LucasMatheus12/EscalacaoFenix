@@ -1,14 +1,15 @@
 import { useState, type FormEvent } from "react";
 import { Flame, LogIn, UserPlus } from "lucide-react";
+import { validateUsername } from "../hooks/useAuth";
 
 interface LoginViewProps {
-  onSignIn: (email: string, password: string) => Promise<string | null>;
-  onSignUp: (email: string, password: string) => Promise<string | null>;
+  onSignIn: (username: string, password: string) => Promise<string | null>;
+  onSignUp: (username: string, password: string) => Promise<string | null>;
 }
 
 export function LoginView({ onSignIn, onSignUp }: LoginViewProps) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -19,15 +20,19 @@ export function LoginView({ onSignIn, onSignUp }: LoginViewProps) {
       return;
     }
 
-    const nextEmail = email.trim().toLowerCase();
-    if (!nextEmail || !password) {
-      setError("Informe e-mail e senha.");
+    const usernameError = validateUsername(username);
+    if (usernameError) {
+      setError(usernameError);
+      return;
+    }
+    if (!password) {
+      setError("Informe a senha.");
       return;
     }
 
     setBusy(true);
     setError("");
-    const message = mode === "signin" ? await onSignIn(nextEmail, password) : await onSignUp(nextEmail, password);
+    const message = mode === "signin" ? await onSignIn(username, password) : await onSignUp(username, password);
     if (message) {
       setError(message);
     }
@@ -41,7 +46,7 @@ export function LoginView({ onSignIn, onSignUp }: LoginViewProps) {
         <span>Escalação Fenix</span>
       </div>
       <h1>Entre para ver a escalação</h1>
-      <p className="muted">A lista do grupo fica privada. Só quem tem conta consegue ver e sortear.</p>
+      <p className="muted">Use usuário e senha. Só quem tem conta vê a lista.</p>
 
       <div className="add-mode-tabs" role="tablist" aria-label="Tipo de acesso">
         <button
@@ -67,14 +72,17 @@ export function LoginView({ onSignIn, onSignUp }: LoginViewProps) {
       </div>
 
       <form className="form-card" onSubmit={(event) => void handleSubmit(event)}>
-        <label htmlFor="loginEmail">E-mail</label>
+        <label htmlFor="loginUsername">Usuário</label>
         <input
-          id="loginEmail"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="seu@email.com"
+          id="loginUsername"
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder="Ex: lucas"
         />
 
         <label htmlFor="loginPassword">Senha</label>
