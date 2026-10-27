@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { getSupabase, isSupabaseConfigured } from "../lib/supabase";
 
 const LEGACY_USERNAME_DOMAIN = "fenix.local";
+const AUTH_REDIRECT_TO = "https://fenix-elenco.vercel.app";
 
 export const normalizeUsername = (value: string): string => value.trim().toLowerCase();
 
@@ -158,7 +159,7 @@ export function useAuth() {
       password,
       options: {
         data: { username: normalizeUsername(username) },
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: AUTH_REDIRECT_TO,
       },
     });
     if (error) {
@@ -189,7 +190,7 @@ export function useAuth() {
     const email = await emailForUsername(username);
     if (email && !email.endsWith(`@${LEGACY_USERNAME_DOMAIN}`)) {
       await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin,
+        redirectTo: AUTH_REDIRECT_TO,
       });
     }
 
