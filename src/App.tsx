@@ -23,10 +23,20 @@ import {
 import { validateDrawConfig } from "./utils/validations";
 import { HomeView } from "./views/HomeView";
 import { LoginView } from "./views/LoginView";
+import { RecoverView } from "./views/RecoverView";
 import { SetupView } from "./views/SetupView";
 
 function App() {
-  const { user, loading: authLoading, signIn, signUp, signOut } = useAuth();
+  const {
+    user,
+    loading: authLoading,
+    recovering,
+    signIn,
+    signUp,
+    signOut,
+    requestPasswordReset,
+    updatePassword,
+  } = useAuth();
   const userId = user?.id;
   const [screen, setScreen] = useState<Screen>(() => screenFromPath(window.location.pathname));
   const [gameType, setGameType] = useState<GameType>(() => loadGameType());
@@ -329,10 +339,18 @@ function App() {
     );
   }
 
+  if (isSupabaseConfigured() && recovering) {
+    return (
+      <main className="app-shell">
+        <RecoverView onSubmit={updatePassword} />
+      </main>
+    );
+  }
+
   if (isSupabaseConfigured() && !user) {
     return (
       <main className="app-shell">
-        <LoginView onSignIn={signIn} onSignUp={signUp} />
+        <LoginView onSignIn={signIn} onSignUp={signUp} onRequestReset={requestPasswordReset} />
       </main>
     );
   }

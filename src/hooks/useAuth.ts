@@ -2,14 +2,9 @@ import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getSupabase, isSupabaseConfigured } from "../lib/supabase";
 
-const USERNAME_DOMAIN = "fenix.local";
+const LEGACY_USERNAME_DOMAIN = "fenix.local";
 
 export const normalizeUsername = (value: string): string => value.trim().toLowerCase();
-
-export const usernameToEmail = (username: string): string => {
-  const normalized = normalizeUsername(username);
-  return normalized.includes("@") ? normalized : `${normalized}@${USERNAME_DOMAIN}`;
-};
 
 export const validateUsername = (username: string): string | null => {
   const normalized = normalizeUsername(username);
@@ -25,19 +20,27 @@ export const validateUsername = (username: string): string | null => {
   return null;
 };
 
+export const validateRecoveryEmail = (email: string): string | null => {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) {
+    return "Informe um e-mail para recuperar a senha.";
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.endsWith(".local")) {
+    return "Informe um e-mail válido.";
+  }
+  return null;
+};
+
 const authErrorMessage = (message: string): string => {
   const lower = message.toLowerCase();
   if (lower.includes("invalid login")) {
     return "Usuário ou senha incorretos.";
   }
   if (lower.includes("already registered") || lower.includes("already been registered")) {
-    return "Esse usuário já existe. Entre com a senha.";
+    return "Esse e-mail já está em uso. Entre ou recupere a senha.";
   }
   if (lower.includes("password")) {
     return "A senha precisa ter pelo menos 6 caracteres.";
-  }
-  if (lower.includes("email not confirmed") || lower.includes("not confirmed")) {
-    return "Não foi possível confirmar o usuário. Tente entrar de novo.";
   }
   if (lower.includes("rate limit") || lower.includes("too many")) {
     return "Muitas tentativas. Espere um pouco e tente de novo.";
@@ -45,9 +48,27 @@ const authErrorMessage = (message: string): string => {
   return "Não foi possível entrar agora. Tente de novo.";
 };
 
+const emailForUsername = async (username: string): Promise<string | null> => {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return null;
+  }
+
+  const { data } = await supabase.rpc("login_email_for_username", {
+    p_username: normalizeUsername(username),
+  });
+
+  if (typeof data === "string" && data.trim()) {
+    return data.trim().toLowerCase();
+  }
+
+  return `${normalizeUsername(username)}@${LEGACY_USERNAME_DOMAIN}`;
+};
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(() => isSupabaseConfigured());
+  const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -57,6 +78,11 @@ export function useAuth() {
     }
 
     let active = true;
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const queryParams = new URLSearchParams(window.location.search);
+    if (hashParams.get("type") === "recovery" || queryParams.get("type") === "recovery") {
+      setRecovering(true);
+    }
 
     void supabase.auth.getSession().then(({ data }) => {
       if (!active) {
@@ -66,9 +92,12 @@ export function useAuth() {
       setLoading(false);
     });
 
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
       setLoading(false);
+      if (event === "PASSWORD_RECOVERY") {
+        setRecovering(true);
+      }
     });
 
     return () => {
@@ -88,14 +117,20 @@ export function useAuth() {
       return usernameError;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: usernameToEmail(username),
-      password,
-    });
+    const email = await emailForUsername(username);
+    if (!email) {
+      return "Usuário ou senha incorretos.";
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     return error ? authErrorMessage(error.message) : null;
   };
 
-  const signUp = async (username: string, password: string): Promise<string | null> => {
+  const signUp = async (
+    username: string,
+    password: string,
+    recoveryEmail: string,
+  ): Promise<string | null> => {
     const supabase = getSupabase();
     if (!supabase) {
       return "Configure o login na nuvem para continuar.";
@@ -105,13 +140,25 @@ export function useAuth() {
     if (usernameError) {
       return usernameError;
     }
+    const emailError = validateRecoveryEmail(recoveryEmail);
+    if (emailError) {
+      return emailError;
+    }
 
-    const email = usernameToEmail(username);
+    const { data: taken } = await supabase.rpc("username_taken", {
+      p_username: normalizeUsername(username),
+    });
+    if (taken) {
+      return "Esse usuário já existe. Entre com a senha.";
+    }
+
+    const email = recoveryEmail.trim().toLowerCase();
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { username: normalizeUsername(username) },
+        emailRedirectTo: window.location.origin,
       },
     });
     if (error) {
@@ -128,13 +175,63 @@ export function useAuth() {
     return null;
   };
 
+  const requestPasswordReset = async (username: string): Promise<string | null> => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return "Configure o login na nuvem para continuar.";
+    }
+
+    const usernameError = validateUsername(username);
+    if (usernameError) {
+      return usernameError;
+    }
+
+    const email = await emailForUsername(username);
+    if (email && !email.endsWith(`@${LEGACY_USERNAME_DOMAIN}`)) {
+      await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+    }
+
+    return null;
+  };
+
+  const updatePassword = async (password: string): Promise<string | null> => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return "Configure o login na nuvem para continuar.";
+    }
+    if (!password || password.length < 6) {
+      return "A senha precisa ter pelo menos 6 caracteres.";
+    }
+
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      return authErrorMessage(error.message);
+    }
+
+    window.history.replaceState({}, "", window.location.pathname || "/");
+    setRecovering(false);
+    return null;
+  };
+
   const signOut = async () => {
     const supabase = getSupabase();
     if (!supabase) {
       return;
     }
+    setRecovering(false);
     await supabase.auth.signOut();
   };
 
-  return { user, loading, signIn, signUp, signOut };
+  return {
+    user,
+    loading,
+    recovering,
+    signIn,
+    signUp,
+    signOut,
+    requestPasswordReset,
+    updatePassword,
+  };
 }
