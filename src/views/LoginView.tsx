@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Flame, KeyRound, LogIn, UserPlus } from "lucide-react";
-import { validateRecoveryEmail, validateUsername } from "../hooks/useAuth";
+import { validatePassword, validateRecoveryEmail, validateUsername } from "../hooks/useAuth";
 
 interface LoginViewProps {
   onSignIn: (username: string, password: string) => Promise<string | null>;
@@ -59,9 +59,10 @@ export function LoginView({ onSignIn, onSignUp, onRequestReset }: LoginViewProps
       }
     }
 
-    if (!password) {
+    const passwordError = validatePassword(password);
+    if (passwordError) {
       setBusy(false);
-      setError("Informe a senha.");
+      setError(passwordError);
       return;
     }
 

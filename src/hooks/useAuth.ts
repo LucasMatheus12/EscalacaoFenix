@@ -32,13 +32,23 @@ export const validateRecoveryEmail = (email: string): string | null => {
   return null;
 };
 
+export const validatePassword = (password: string): string | null => {
+  if (!password) {
+    return "Informe a senha.";
+  }
+  if (password.length < 6) {
+    return "A senha precisa ter pelo menos 6 caracteres.";
+  }
+  return null;
+};
+
 const authErrorMessage = (message: string): string => {
   const lower = message.toLowerCase();
   if (lower.includes("invalid login")) {
     return "Usuário ou senha incorretos.";
   }
   if (lower.includes("already registered") || lower.includes("already been registered")) {
-    return "Esse e-mail já está em uso. Entre ou recupere a senha.";
+    return "Esse e-mail já tem conta. Entre com o usuário ou use Esqueci a senha.";
   }
   if (lower.includes("password")) {
     return "A senha precisa ter pelo menos 6 caracteres.";
@@ -145,12 +155,16 @@ export function useAuth() {
     if (emailError) {
       return emailError;
     }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return passwordError;
+    }
 
     const { data: taken } = await supabase.rpc("username_taken", {
       p_username: normalizeUsername(username),
     });
     if (taken) {
-      return "Esse usuário já existe. Entre com a senha.";
+      return "Esse usuário já existe. Entre com a senha ou use Esqueci a senha.";
     }
 
     const email = recoveryEmail.trim().toLowerCase();
@@ -165,6 +179,13 @@ export function useAuth() {
     if (error) {
       return authErrorMessage(error.message);
     }
+
+    // Supabase returns 200 without identities when the e-mail already exists.
+    const alreadyExists = Boolean(data.user) && (data.user?.identities?.length ?? 0) === 0;
+    if (alreadyExists) {
+      return "Esse e-mail já tem conta. Entre com o usuário ou use Esqueci a senha.";
+    }
+
     if (data.session) {
       return null;
     }
